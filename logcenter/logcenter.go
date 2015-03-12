@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"code.google.com/p/gcfg"
 	"fmt"
 	"log"
 	"net"
@@ -11,12 +12,30 @@ import (
 	"time"
 )
 
+type Config struct {
+	Section struct {
+		Listen string
+		Logto  string
+	}
+	Stats map[string]*struct {
+		Col  string
+		Stat string
+	}
+}
+
 var guests []*net.TCPConn
 var count int
+var logch chan string
 
 func main() {
+	cfg := Config{}
+	err := gcfg.ReadFileInto(&cfg, "center.conf")
+	if err != nil {
+		log.Fatalf("Failed to parse gcfg data: %s", err)
+	}
+
 	c := make(chan os.Signal, 1)
-	laddr, err := net.ResolveTCPAddr("tcp4", ":46714")
+	laddr, err := net.ResolveTCPAddr("tcp4", cfg.Section.Listen)
 	l, err := net.ListenTCP("tcp4", laddr)
 	if err != nil {
 		log.Fatal(err)
@@ -24,6 +43,7 @@ func main() {
 	defer closeall()
 	go counting()
 	go broadcast()
+	go writelog(cfg.Section.Logto)
 	for {
 		conn, err := l.AcceptTCP()
 		if err != nil {
@@ -36,6 +56,7 @@ func main() {
 			scanner := bufio.NewScanner(conn)
 			i := 0
 			for scanner.Scan() {
+				logch <- scanner.Text()
 				log.Printf("[%d][%s]%s\n", i, conn.RemoteAddr(), scanner.Text())
 				i++
 			}
@@ -79,5 +100,18 @@ func broadcast() {
 func closeall() {
 	for _, c := range guests {
 		c.Close()
+	}
+}
+
+func writelog(filename string) {
+	f, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE, 0666)
+	if err != nil {
+		log.Fatal(err)
+	}
+	for {
+		select {
+		case s := <-logch:
+			f.WriteString(s)
+		}
 	}
 }

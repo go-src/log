@@ -7,12 +7,11 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"syscall"
 	"time"
 )
 
+var c = make(chan os.Signal, 1)
 func main() {
-	c := make(chan os.Signal, 1)
 	delay, retry := 1, 0
 
 Redial:
@@ -31,7 +30,7 @@ Redial:
 	go send(conn)
 	go recv(conn)
 
-	signal.Notify(c, syscall.SIGUSR2)
+	signal.Notify(c, os.Interrupt)
 	s := <-c
 	fmt.Printf("\nCaught signal: %s\n", s)
 	conn.Close()
@@ -47,7 +46,7 @@ func send(conn *net.TCPConn) {
 		fmt.Printf("%d bytes written: %s", n, b)
 		if err != nil {
 			fmt.Println(err, ", Redialing...")
-			syscall.Kill(os.Getpid(), syscall.SIGUSR2)
+			redial(conn)
 			return
 		}
 		time.Sleep(time.Second * 2)
@@ -63,7 +62,12 @@ func recv(conn *net.TCPConn) {
 	}
 	if err := scanner.Err(); err != nil {
 		fmt.Println("Reading input:", err)
-		syscall.Kill(os.Getpid(), syscall.SIGUSR2)
+		redial(conn)
 		return
 	}
+}
+
+func redial(conn *net.TCPConn) {
+	fmt.Println("Cleanup elegantly...")
+	c <- os.Interrupt
 }

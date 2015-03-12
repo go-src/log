@@ -8,7 +8,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"syscall"
 	"time"
 )
 
@@ -26,6 +25,7 @@ type Config struct {
 var guests []*net.TCPConn
 var count int
 var logch chan string
+var c = make(chan os.Signal, 1)
 
 func main() {
 	cfg := Config{}
@@ -34,7 +34,6 @@ func main() {
 		log.Fatalf("Failed to parse gcfg data: %s", err)
 	}
 
-	c := make(chan os.Signal, 1)
 	laddr, err := net.ResolveTCPAddr("tcp4", cfg.Section.Listen)
 	l, err := net.ListenTCP("tcp4", laddr)
 	if err != nil {
@@ -66,7 +65,7 @@ func main() {
 			log.Println("[GOODBYE] ", conn.RemoteAddr())
 		}()
 	}
-	signal.Notify(c, os.Interrupt, syscall.SIGHUP)
+	signal.Notify(c, os.Interrupt)
 	for {
 		s := <-c
 		closeall()
